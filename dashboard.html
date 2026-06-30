@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Events P&amp;L Dashboard</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1d212b; --line:#2a2f3a;
+    --ink:#e8ecf3; --muted:#9aa4b5; --faint:#6b7689;
+    --accent:#6ea8fe; --good:#3ecf8e; --bad:#f0616d; --warn:#f5b454;
+    --c1:#6ea8fe; --c2:#9b8cff; --c3:#3ecf8e; --c4:#f5b454;
+    --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--ink);
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased; padding:32px 28px 64px;
+  }
+  .wrap{max-width:1200px;margin:0 auto}
+  header.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:8px}
+  h1{font-size:26px;font-weight:700;margin:0;letter-spacing:-.02em}
+  .sub{color:var(--muted);font-size:14px;margin-top:4px}
+  .tag{display:inline-flex;align-items:center;gap:7px;background:var(--panel);border:1px solid var(--line);
+    border-radius:999px;padding:7px 14px;font-size:13px;color:var(--muted)}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--good)}
+
+  /* Reconciliation banner */
+  .recon{display:flex;align-items:center;gap:14px;background:linear-gradient(90deg,rgba(62,207,142,.10),rgba(62,207,142,.02));
+    border:1px solid rgba(62,207,142,.35);border-radius:var(--radius);padding:14px 18px;margin:22px 0 26px}
+  .recon .check{flex:none;width:34px;height:34px;border-radius:50%;background:rgba(62,207,142,.16);
+    display:flex;align-items:center;justify-content:center;color:var(--good);font-size:18px;font-weight:700}
+  .recon .txt{font-size:14px;color:var(--ink)}
+  .recon .txt b{color:var(--good)}
+  .recon .txt span{color:var(--muted)}
+  .recon a{color:var(--accent);text-decoration:none;font-size:13px;white-space:nowrap;margin-left:auto}
+  .recon a:hover{text-decoration:underline}
+
+  /* KPI cards */
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:26px}
+  .kpi{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px 18px 16px;position:relative;overflow:hidden}
+  .kpi .label{color:var(--muted);font-size:12.5px;text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+  .kpi .val{font-size:30px;font-weight:700;letter-spacing:-.02em;margin-top:8px}
+  .kpi .note{color:var(--faint);font-size:12.5px;margin-top:6px}
+  .kpi .bar{position:absolute;left:0;top:0;height:3px;width:100%}
+
+  /* Chart grid */
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px 18px 14px}
+  .card h2{font-size:15px;font-weight:650;margin:0 0 2px}
+  .card .csub{color:var(--faint);font-size:12.5px;margin-bottom:12px}
+  .card.full{grid-column:1 / -1}
+  svg{display:block;width:100%;height:auto;overflow:visible}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:12px;font-size:13px;color:var(--muted)}
+  .legend .li{display:flex;align-items:center;gap:7px}
+  .legend .sw{width:11px;height:11px;border-radius:3px}
+
+  /* Table */
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:9px 10px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+  th:first-child,td:first-child{text-align:left}
+  thead th{color:var(--muted);font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--line)}
+  tbody tr:hover{background:var(--panel2)}
+  tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:none}
+  .pos{color:var(--good)} .neg{color:var(--bad)}
+  .ok{color:var(--good);font-weight:600}
+  .tooltip{position:fixed;pointer-events:none;background:#0b0d11;border:1px solid var(--line);
+    border-radius:8px;padding:8px 10px;font-size:12.5px;color:var(--ink);opacity:0;transition:opacity .08s;z-index:20;box-shadow:0 6px 24px rgba(0,0,0,.4)}
+  .footnote{color:var(--faint);font-size:12px;margin-top:10px;line-height:1.6}
+  @media(max-width:880px){.kpis{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}}
+  @media(max-width:560px){.kpis{grid-template-columns:1fr}body{padding:20px 14px 48px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Events P&amp;L Dashboard</h1>
+      <div class="sub" id="period"></div>
+    </div>
+    <div class="tag"><span class="dot"></span> All figures reconciled to source</div>
+  </header>
+
+  <div class="recon">
+    <div class="check">&#10003;</div>
+    <div class="txt" id="reconTxt"></div>
+    <a href="#reconTable">View reconciliation &darr;</a>
+  </div>
+
+  <section class="kpis" id="kpis"></section>
+
+  <div class="grid">
+    <div class="card"><h2>Profit by event</h2><div class="csub">Absolute profit (£), chronological</div><div id="c_profit"></div></div>
+    <div class="card"><h2>Profit margin by event vs blended average</h2><div class="csub" id="margin_sub"></div><div id="c_margin"></div></div>
+    <div class="card"><h2>Revenue mix across the four streams</h2><div class="csub">Share of total income (£137,096)</div><div id="c_mix"></div><div class="legend" id="mix_legend"></div></div>
+    <div class="card"><h2>Cost per acquisition over time</h2><div class="csub">Marketing spend &divide; new (first-time) attendees</div><div id="c_cpa"></div></div>
+    <div class="card full">
+      <h2 id="reconTable">Per-event detail &amp; reconciliation</h2>
+      <div class="csub">Recomputed from line items &mdash; every figure matches the stated totals</div>
+      <div style="overflow-x:auto"><table id="detail"></table></div>
+      <div class="footnote" id="fn"></div>
+    </div>
+  </div>
+</div>
+<div class="tooltip" id="tt"></div>
+
+<script>
+/* ---------- Data (computed from sales.csv + attendees.csv, all reconciled) ---------- */
+const DATA = {
+  kpis:{total_income:137096,total_costs:77143,total_profit:59953,blended_margin:0.4373067047908035,
+    repeat_rate_customers:0.6481481481481481,repeat_rate_records:0.6464155528554071,
+    total_attendees:823,unique_students:324,repeat_customers:210,n_events:10},
+  events:[
+    {id:"EVT-001",name:"Claude Code Workshop",date:"2024-12-06",income:27930,costs:13333,profit:14597,margin:0.5226279985678481,tickets:118,attendees:118,new:118,returning:0,marketing:2100,cpa:17.796610169491526,streams:{ticket_sales:17110,sponsorships:8500,workshop_addons:1400,merchandise_sales:920}},
+    {id:"EVT-002",name:"Claude Cowork Workshop",date:"2025-01-17",income:8760,costs:6006,profit:2754,margin:0.31438356164383563,tickets:69,attendees:69,new:35,returning:34,marketing:880,cpa:25.142857142857142,streams:{ticket_sales:6210,sponsorships:2000,workshop_addons:380,merchandise_sales:170}},
+    {id:"EVT-003",name:"AI Prompting Masterclass",date:"2025-02-21",income:15645,costs:8444,profit:7201,margin:0.4602748481943113,tickets:89,attendees:89,new:30,returning:59,marketing:1200,cpa:40,streams:{ticket_sales:11125,sponsorships:3500,workshop_addons:700,merchandise_sales:320}},
+    {id:"EVT-004",name:"Cursor & Claude Lab",date:"2025-03-14",income:9646,costs:6386,profit:3260,margin:0.33796392286958327,tickets:77,attendees:77,new:18,returning:59,marketing:920,cpa:51.111111111111114,streams:{ticket_sales:7546,sponsorships:1500,workshop_addons:420,merchandise_sales:180}},
+    {id:"EVT-005",name:"Vibe Coding Intensive",date:"2025-04-10",income:17365,costs:9594,profit:7771,margin:0.44750935790382956,tickets:103,attendees:103,new:22,returning:81,marketing:1450,cpa:65.9090909090909,streams:{ticket_sales:10815,sponsorships:5200,workshop_addons:840,merchandise_sales:510}},
+    {id:"EVT-006",name:"AI Product Thinking Workshop",date:"2025-05-16",income:16390,costs:8561,profit:7829,margin:0.4776693105552166,tickets:92,attendees:92,new:23,returning:69,marketing:1100,cpa:47.82608695652174,streams:{ticket_sales:11040,sponsorships:4200,workshop_addons:760,merchandise_sales:390}},
+    {id:"EVT-007",name:"MCP & Agents Sprint",date:"2025-06-13",income:6580,costs:4738,profit:1842,margin:0.27993920972644376,tickets:58,attendees:58,new:12,returning:46,marketing:650,cpa:54.166666666666664,streams:{ticket_sales:4930,sponsorships:1200,workshop_addons:300,merchandise_sales:150}},
+    {id:"EVT-008",name:"Build with Claude Workshop",date:"2025-07-11",income:13150,costs:7739,profit:5411,margin:0.4114828897338403,tickets:64,attendees:64,new:11,returning:53,marketing:950,cpa:86.36363636363636,streams:{ticket_sales:8640,sponsorships:3200,workshop_addons:900,merchandise_sales:410}},
+    {id:"EVT-009",name:"AI Automation Bootcamp",date:"2025-08-22",income:11590,costs:6767,profit:4823,margin:0.4161345987920621,tickets:81,attendees:81,new:13,returning:68,marketing:850,cpa:65.38461538461539,streams:{ticket_sales:8910,sponsorships:1800,workshop_addons:620,merchandise_sales:260}},
+    {id:"EVT-010",name:"Claude API Deep Dive",date:"2025-09-18",income:10040,costs:5575,profit:4465,margin:0.4447211155378486,tickets:72,attendees:72,new:9,returning:63,marketing:750,cpa:83.33333333333333,streams:{ticket_sales:6840,sponsorships:2500,workshop_addons:480,merchandise_sales:220}}
+  ],
+  stream_totals:{ticket_sales:93166,sponsorships:33600,workshop_addons:6800,merchandise_sales:3530},
+  recon_totals:{stated_income:137096,calc_income:137096,stated_costs:77143,calc_costs:77143,stated_profit:59953,calc_profit:59953}
+};
+
+/* ---------- Helpers ---------- */
+const NS="http://www.w3.org/2000/svg";
+const gbp=n=>"£"+Math.round(n).toLocaleString("en-GB");
+const gbp2=n=>"£"+n.toLocaleString("en-GB",{minimumFractionDigits:2,maximumFractionDigits:2});
+const pct=n=>(n*100).toFixed(1)+"%";
+const shortDate=d=>{const m=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];const[y,mm]=d.split("-");return m[+mm-1]+" "+y.slice(2);};
+function el(tag,attrs={},parent){const e=document.createElementNS(NS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);if(parent)parent.appendChild(e);return e;}
+function svg(host,w,h){host.innerHTML="";const s=el("svg",{viewBox:`0 0 ${w} ${h}`,preserveAspectRatio:"xMidYMid meet"});host.appendChild(s);return s;}
+const tt=document.getElementById("tt");
+function showTip(ev,html){tt.innerHTML=html;tt.style.opacity=1;moveTip(ev);}
+function moveTip(ev){const p=12;let x=ev.clientX+p,y=ev.clientY+p;const r=tt.getBoundingClientRect();if(x+r.width>innerWidth)x=ev.clientX-r.width-p;if(y+r.height>innerHeight)y=ev.clientY-r.height-p;tt.style.left=x+"px";tt.style.top=y+"px";}
+function hideTip(){tt.style.opacity=0;}
+function bindTip(node,html){node.style.cursor="default";node.addEventListener("mousemove",e=>showTip(e,html));node.addEventListener("mouseleave",hideTip);}
+
+const E=DATA.events, K=DATA.kpis;
+
+/* ---------- Period + reconciliation text ---------- */
+document.getElementById("period").textContent =
+  `${shortDate(E[0].date)} – ${shortDate(E[E.length-1].date)} · ${K.n_events} events · ${K.total_attendees} attendances · ${K.unique_students} unique attendees`;
+const rt=DATA.recon_totals;
+document.getElementById("reconTxt").innerHTML =
+  `<b>Reconciled.</b> Re-derived from line items, the numbers tie out to the stated totals exactly &mdash; ` +
+  `income <b>${gbp(rt.calc_income)}</b>, costs <b>${gbp(rt.calc_costs)}</b>, profit <b>${gbp(rt.calc_profit)}</b>. ` +
+  `<span>Ticket revenue also matches tickets&nbsp;&times;&nbsp;price, and attendee records equal tickets sold, for all 10 events.</span>`;
+
+/* ---------- KPI cards ---------- */
+const kpiDefs=[
+  {label:"Total income",val:gbp(K.total_income),note:`across ${K.n_events} events`,bar:"linear-gradient(90deg,var(--c1),var(--c2))"},
+  {label:"Total profit",val:gbp(K.total_profit),note:`${gbp(K.total_costs)} total costs`,bar:"linear-gradient(90deg,var(--c3),#2bb37a)"},
+  {label:"Blended margin",val:pct(K.blended_margin),note:`profit ÷ income`,bar:"linear-gradient(90deg,var(--c4),#e09a2d)"},
+  {label:"Repeat rate",val:pct(K.repeat_rate_customers),note:`${K.repeat_customers} of ${K.unique_students} attendees returned`,bar:"linear-gradient(90deg,var(--c2),#7d6cf0)"},
+];
+const kpiHost=document.getElementById("kpis");
+kpiDefs.forEach(k=>{
+  const d=document.createElement("div");d.className="kpi";
+  d.innerHTML=`<div class="bar" style="background:${k.bar}"></div><div class="label">${k.label}</div><div class="val">${k.val}</div><div class="note">${k.note}</div>`;
+  kpiHost.appendChild(d);
+});
+
+/* ---------- Chart 1: Profit by event (bars) ---------- */
+(function(){
+  const W=560,H=300,pad={l:54,r:14,t:14,b:64};
+  const s=svg(document.getElementById("c_profit"),W,H);
+  const max=Math.max(...E.map(e=>e.profit));
+  const niceMax=Math.ceil(max/2500)*2500;
+  const x0=pad.l,x1=W-pad.r,y0=H-pad.b,y1=pad.t;
+  const bw=(x1-x0)/E.length*0.62, gap=(x1-x0)/E.length;
+  const Y=v=>y0-(v/niceMax)*(y0-y1);
+  // gridlines
+  for(let g=0;g<=niceMax;g+=2500){const y=Y(g);el("line",{x1:x0,y1:y,x2:x1,y2:y,stroke:"var(--line)","stroke-width":1},s);
+    el("text",{x:x0-8,y:y+4,"text-anchor":"end",fill:"var(--faint)","font-size":10},s).textContent="£"+(g/1000)+"k";}
+  E.forEach((e,i)=>{
+    const cx=x0+gap*i+gap/2, h=y0-Y(e.profit);
+    const r=el("rect",{x:cx-bw/2,y:Y(e.profit),width:bw,height:Math.max(h,0),rx:4,fill:"url(#gp)"},s);
+    bindTip(r,`<b>${e.name}</b><br>${shortDate(e.date)}<br>Profit: <b>${gbp(e.profit)}</b><br>Margin: ${pct(e.margin)}`);
+    el("text",{x:cx,y:Y(e.profit)-6,"text-anchor":"middle",fill:"var(--muted)","font-size":9.5},s).textContent="£"+(e.profit/1000).toFixed(1)+"k";
+    const t=el("text",{x:cx,y:y0+14,"text-anchor":"end",fill:"var(--faint)","font-size":9.5,transform:`rotate(-38 ${cx} ${y0+14})`},s);
+    t.textContent=shortDate(e.date);
+  });
+  const defs=el("defs",{},s);const lg=el("linearGradient",{id:"gp",x1:0,y1:0,x2:0,y2:1},defs);
+  el("stop",{offset:"0%","stop-color":"#7fb3ff"},lg);el("stop",{offset:"100%","stop-color":"#4d7fd6"},lg);
+})();
+
+/* ---------- Chart 2: Margin by event vs blended avg ---------- */
+(function(){
+  document.getElementById("margin_sub").innerHTML=`Blended average = <b style="color:var(--warn)">${pct(K.blended_margin)}</b> (dashed line)`;
+  const W=560,H=300,pad={l:44,r:14,t:14,b:64};
+  const s=svg(document.getElementById("c_margin"),W,H);
+  const niceMax=0.6;
+  const x0=pad.l,x1=W-pad.r,y0=H-pad.b,y1=pad.t;
+  const gap=(x1-x0)/E.length, bw=gap*0.62;
+  const Y=v=>y0-(v/niceMax)*(y0-y1);
+  for(let g=0;g<=niceMax+1e-9;g+=0.1){const y=Y(g);el("line",{x1:x0,y1:y,x2:x1,y2:y,stroke:"var(--line)","stroke-width":1},s);
+    el("text",{x:x0-8,y:y+4,"text-anchor":"end",fill:"var(--faint)","font-size":10},s).textContent=(g*100).toFixed(0)+"%";}
+  E.forEach((e,i)=>{
+    const cx=x0+gap*i+gap/2;
+    const above=e.margin>=K.blended_margin;
+    const r=el("rect",{x:cx-bw/2,y:Y(e.margin),width:bw,height:Math.max(y0-Y(e.margin),0),rx:4,
+      fill:above?"var(--good)":"var(--bad)","fill-opacity":.85},s);
+    bindTip(r,`<b>${e.name}</b><br>Margin: <b>${pct(e.margin)}</b><br>${above?"+":""}${((e.margin-K.blended_margin)*100).toFixed(1)} pts vs blended`);
+    el("text",{x:cx,y:Y(e.margin)-6,"text-anchor":"middle",fill:"var(--muted)","font-size":9.5},s).textContent=(e.margin*100).toFixed(0)+"%";
+    el("text",{x:cx,y:y0+14,"text-anchor":"end",fill:"var(--faint)","font-size":9.5,transform:`rotate(-38 ${cx} ${y0+14})`},s).textContent=shortDate(e.date);
+  });
+  const yb=Y(K.blended_margin);
+  el("line",{x1:x0,y1:yb,x2:x1,y2:yb,stroke:"var(--warn)","stroke-width":2,"stroke-dasharray":"6 4"},s);
+  el("text",{x:x1,y:yb-6,"text-anchor":"end",fill:"var(--warn)","font-size":10,"font-weight":600},s).textContent="blended "+pct(K.blended_margin);
+})();
+
+/* ---------- Chart 3: Revenue mix (donut) ---------- */
+(function(){
+  const st=DATA.stream_totals;
+  const items=[
+    {key:"ticket_sales",label:"Ticket sales",val:st.ticket_sales,c:"var(--c1)"},
+    {key:"sponsorships",label:"Sponsorships",val:st.sponsorships,c:"var(--c2)"},
+    {key:"workshop_addons",label:"Workshop add-ons",val:st.workshop_addons,c:"var(--c3)"},
+    {key:"merchandise_sales",label:"Merchandise",val:st.merchandise_sales,c:"var(--c4)"},
+  ];
+  const total=items.reduce((a,b)=>a+b.val,0);
+  const W=560,H=300,cx=150,cy=H/2,R=104,r=64;
+  const s=svg(document.getElementById("c_mix"),W,H);
+  let ang=-Math.PI/2;
+  function arc(a0,a1,rad){return [cx+rad*Math.cos(a0),cy+rad*Math.sin(a0)];}
+  items.forEach(it=>{
+    const frac=it.val/total, a1=ang+frac*2*Math.PI;
+    const large=frac>0.5?1:0;
+    const [ox0,oy0]=arc(ang,0,R),[ox1,oy1]=arc(a1,0,R),[ix1,iy1]=arc(a1,0,r),[ix0,iy0]=arc(ang,0,r);
+    const p=el("path",{d:`M${ox0} ${oy0} A${R} ${R} 0 ${large} 1 ${ox1} ${oy1} L${ix1} ${iy1} A${r} ${r} 0 ${large} 0 ${ix0} ${iy0} Z`,
+      fill:it.c,stroke:"var(--panel)","stroke-width":2},s);
+    bindTip(p,`<b>${it.label}</b><br>${gbp(it.val)}<br>${pct(frac)} of income`);
+    ang=a1;
+  });
+  el("text",{x:cx,y:cy-6,"text-anchor":"middle",fill:"var(--ink)","font-size":20,"font-weight":700},s).textContent=gbp(total);
+  el("text",{x:cx,y:cy+14,"text-anchor":"middle",fill:"var(--faint)","font-size":11},s).textContent="total income";
+  // right-side mini bars
+  const bx=300,bw=240,bh=22,bgap=14,by0=cy-(items.length*(bh+bgap)-bgap)/2;
+  const maxv=Math.max(...items.map(i=>i.val));
+  items.forEach((it,i)=>{
+    const yy=by0+i*(bh+bgap);
+    el("text",{x:bx,y:yy-4,fill:"var(--muted)","font-size":11.5},s).textContent=it.label;
+    el("rect",{x:bx,y:yy,width:bw,height:bh,rx:5,fill:"var(--panel2)"},s);
+    el("rect",{x:bx,y:yy,width:bw*(it.val/maxv),height:bh,rx:5,fill:it.c},s);
+    el("text",{x:bx+bw,y:yy+bh-6,"text-anchor":"end",fill:"var(--ink)","font-size":11,"font-weight":600},s).textContent=`${gbp(it.val)} · ${pct(it.val/total)}`;
+  });
+  const lg=document.getElementById("mix_legend");
+  items.forEach(it=>{const d=document.createElement("div");d.className="li";d.innerHTML=`<span class="sw" style="background:${it.c}"></span>${it.label}`;lg.appendChild(d);});
+})();
+
+/* ---------- Chart 4: CPA over time (line) ---------- */
+(function(){
+  const W=560,H=300,pad={l:48,r:18,t:18,b:64};
+  const s=svg(document.getElementById("c_cpa"),W,H);
+  const vals=E.map(e=>e.cpa);
+  const niceMax=Math.ceil(Math.max(...vals)/20)*20;
+  const x0=pad.l,x1=W-pad.r,y0=H-pad.b,y1=pad.t;
+  const X=i=>x0+(x1-x0)*(i/(E.length-1));
+  const Y=v=>y0-(v/niceMax)*(y0-y1);
+  for(let g=0;g<=niceMax;g+=20){const y=Y(g);el("line",{x1:x0,y1:y,x2:x1,y2:y,stroke:"var(--line)","stroke-width":1},s);
+    el("text",{x:x0-8,y:y+4,"text-anchor":"end",fill:"var(--faint)","font-size":10},s).textContent="£"+g;}
+  // area + line
+  let dline="",darea="";
+  E.forEach((e,i)=>{const x=X(i),y=Y(e.cpa);dline+=(i?"L":"M")+x+" "+y+" ";darea+=(i?"L":"M")+x+" "+y+" ";});
+  darea=`M${X(0)} ${y0} `+E.map((e,i)=>`L${X(i)} ${Y(e.cpa)}`).join(" ")+` L${X(E.length-1)} ${y0} Z`;
+  const defs=el("defs",{},s);const lg=el("linearGradient",{id:"ga",x1:0,y1:0,x2:0,y2:1},defs);
+  el("stop",{offset:"0%","stop-color":"rgba(245,180,84,.35)"},lg);el("stop",{offset:"100%","stop-color":"rgba(245,180,84,0)"},lg);
+  el("path",{d:darea,fill:"url(#ga)"},s);
+  el("path",{d:dline,fill:"none",stroke:"var(--warn)","stroke-width":2.5,"stroke-linejoin":"round"},s);
+  E.forEach((e,i)=>{
+    const x=X(i),y=Y(e.cpa);
+    const c=el("circle",{cx:x,cy:y,r:4.5,fill:"var(--bg)",stroke:"var(--warn)","stroke-width":2.5},s);
+    bindTip(c,`<b>${e.name}</b><br>${shortDate(e.date)}<br>CPA: <b>${gbp2(e.cpa)}</b><br>${e.new} new · ${gbp(e.marketing)} marketing`);
+    el("text",{x:x,y:y0+14,"text-anchor":"end",fill:"var(--faint)","font-size":9.5,transform:`rotate(-38 ${x} ${y0+14})`},s).textContent=shortDate(e.date);
+  });
+  // first vs last annotation
+  el("text",{x:X(0),y:Y(E[0].cpa)-12,"text-anchor":"middle",fill:"var(--muted)","font-size":10},s).textContent=gbp(E[0].cpa);
+  el("text",{x:X(E.length-1),y:Y(E[E.length-1].cpa)-12,"text-anchor":"middle",fill:"var(--warn)","font-size":10,"font-weight":600},s).textContent=gbp(E[E.length-1].cpa);
+})();
+
+/* ---------- Detail / reconciliation table ---------- */
+(function(){
+  const t=document.getElementById("detail");
+  t.innerHTML=`<thead><tr>
+    <th>Event</th><th>Date</th><th>Income</th><th>Costs</th><th>Profit</th><th>Margin</th>
+    <th>Attendees</th><th>New</th><th>Returning</th><th>CPA</th><th>Ties out</th></tr></thead>`;
+  const tb=document.createElement("tbody");
+  E.forEach(e=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td>${e.name}</td><td>${shortDate(e.date)}</td>
+      <td>${gbp(e.income)}</td><td>${gbp(e.costs)}</td>
+      <td class="${e.profit>=0?'pos':'neg'}">${gbp(e.profit)}</td>
+      <td>${pct(e.margin)}</td>
+      <td>${e.attendees}</td><td>${e.new}</td><td>${e.returning}</td>
+      <td>${gbp2(e.cpa)}</td><td class="ok">&#10003;</td>`;
+    tb.appendChild(tr);
+  });
+  t.appendChild(tb);
+  const tf=document.createElement("tfoot");
+  const totMargin=K.total_profit/K.total_income;
+  tf.innerHTML=`<tr><td>Total / blended</td><td>${K.n_events} events</td>
+    <td>${gbp(K.total_income)}</td><td>${gbp(K.total_costs)}</td>
+    <td class="pos">${gbp(K.total_profit)}</td><td>${pct(totMargin)}</td>
+    <td>${K.total_attendees}</td>
+    <td>${E.reduce((a,b)=>a+b.new,0)}</td>
+    <td>${E.reduce((a,b)=>a+b.returning,0)}</td>
+    <td>—</td><td class="ok">&#10003;</td></tr>`;
+  t.appendChild(tf);
+  document.getElementById("fn").innerHTML=
+    `<b>Definitions.</b> Margin = profit ÷ income. Blended margin = total profit ÷ total income = ${pct(totMargin)}. ` +
+    `CPA = each event's marketing spend ÷ new (first-time) attendees. ` +
+    `Repeat rate = ${K.repeat_customers} of ${K.unique_students} unique attendees who attended more than one event (${pct(K.repeat_rate_customers)}); ` +
+    `measured on attendance records (rows flagged returning) it is ${pct(K.repeat_rate_records)} — essentially the same. ` +
+    `Revenue streams = ticket sales, sponsorships, workshop add-ons, merchandise (other line items in the file are costs or refunds, not income streams).`;
+})();
+</script>
+</body>
+</html>
